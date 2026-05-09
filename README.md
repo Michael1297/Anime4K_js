@@ -1,10 +1,9 @@
-# Bilibili_Anime4K_Experimental
+# Anime4K_Experimental
 Bring Anime4K filter to all the 2D anime you love on [Bilibili](https://www.bilibili.com/) and [ACFun](https://www.acfun.cn/)!
 
-[[中文README]](README_zh.md)
 
 # Usage
-Load and enable Bilibili_Anime4K.js in your TamperMonkey and switch to HTML5 player. Tested on Chrome 77. Note that this should only be enabled on 2D anime since the filter just isn't fit for other type of videos.
+Load and enable Anime4K_*.js in your TamperMonkey and switch to HTML5 player. Tested on Chrome 77. Note that this should only be enabled on 2D anime since the filter just isn't fit for other type of videos.
 
 The script will automatically scale video to 1440p resolution.
 
