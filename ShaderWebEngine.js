@@ -23,6 +23,27 @@ const quadVert = [
         "}",
     ].join("\n");
 
+    const fragDrawLumaPreserveColor = [
+        "precision mediump float;",
+        "",
+        "uniform sampler2D u_luma;",
+        "uniform sampler2D u_source;",
+        "varying vec2 v_tex_pos;",
+        "",
+        "void main() {",
+        "    float processedLuma = texture2D(u_luma, v_tex_pos).r;",
+        "    vec3 source = texture2D(u_source, v_tex_pos).rgb;",
+        "    float sourceLuma = dot(source, vec3(0.2126, 0.7152, 0.0722));",
+        "    float cb = (source.b - sourceLuma) / 1.8556;",
+        "    float cr = (source.r - sourceLuma) / 1.5748;",
+        "    float r = processedLuma + 1.5748 * cr;",
+        "    float b = processedLuma + 1.8556 * cb;",
+        "    float g = (processedLuma - 0.2126 * r - 0.0722 * b) / 0.7152;",
+        "    vec3 color = vec3(r, g, b);",
+        "    gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);",
+        "}",
+    ].join("\n");
+
     function formatShaderSnippet(source, maxLines) {
         const lines = String(source || "").split(/\r?\n/).slice(0, maxLines);
         return lines.map(function (line, idx) {
@@ -198,9 +219,12 @@ const quadVert = [
                 passes: mpvPasses.map(function (pass, idx) {
                     return {
                         index: idx,
+                        hook: pass.hook,
                         save: pass.save,
                         samplers: pass.samplers,
                         description: pass.description,
+                        width: pass.width,
+                        height: pass.height,
                         shaderLength: pass.shader.length,
                     };
                 }),
@@ -211,13 +235,17 @@ const quadVert = [
         return {
             passes: mpvPasses.map(function (pass, idx) {
                 return {
+                    hook: pass.hook,
                     save: pass.save,
                     samplers: pass.samplers,
                     description: pass.description,
+                    width: pass.width,
+                    height: pass.height,
                     program: createProgram(gl, quadVert, pass.shader, "mpv-pass" + idx + ":" + pass.save),
                 };
             }),
             programDraw: createProgram(gl, quadVert, fragDraw, "draw"),
+            programDrawLuma: createProgram(gl, quadVert, fragDrawLumaPreserveColor, "draw-luma-preserve-color"),
         };
     }
 
@@ -269,14 +297,42 @@ const quadVert = [
         if (this.mpvPasses) {
             this.scaler.mpvTextures = {};
             this.scaler.mpvTextureSizes = {};
+            this.scaler.mpvPassTargets = [];
+            this.scaler.mpvPassTargetSizes = [];
+            const plannedSizes = {
+                HOOKED: [Math.max(1, this.scaler.inputWidth), Math.max(1, this.scaler.inputHeight)],
+                MAIN: [Math.max(1, this.scaler.inputWidth), Math.max(1, this.scaler.inputHeight)],
+                LUMA: [Math.max(1, this.scaler.inputWidth), Math.max(1, this.scaler.inputHeight)],
+            };
+            const resolvePassSize = (pass) => {
+                const widthExpr = pass.width || "";
+                const heightExpr = pass.height || "";
+                if (widthExpr.includes("OUTPUT") || heightExpr.includes("OUTPUT")) {
+                    return [width, height];
+                }
+                for (const samplerName of pass.samplers || []) {
+                    if ((widthExpr.includes(samplerName + ".w") || heightExpr.includes(samplerName + ".h")) && plannedSizes[samplerName]) {
+                        return plannedSizes[samplerName];
+                    }
+                }
+                return [Math.max(1, this.scaler.inputWidth), Math.max(1, this.scaler.inputHeight)];
+            };
             for (const pass of this.mpvPasses) {
-                if (!pass.save || pass.save === "MAIN" || this.scaler.mpvTextures[pass.save]) {
+                const passSize = resolvePassSize(pass);
+                if (pass.save) {
+                    plannedSizes[pass.save] = passSize;
+                }
+                if (!pass.save || pass.save === "MAIN") {
+                    this.scaler.mpvPassTargets.push(this.scaler.outputTexture);
+                    this.scaler.mpvPassTargetSizes.push([width, height]);
                     continue;
                 }
-                const passWidth = Math.max(1, this.scaler.inputWidth);
-                const passHeight = Math.max(1, this.scaler.inputHeight);
+                const passWidth = Math.max(1, passSize[0]);
+                const passHeight = Math.max(1, passSize[1]);
                 const passEmpty = new Uint8Array(passWidth * passHeight * 4);
-                this.scaler.mpvTextures[pass.save] = createTexture(gl, passFilter, passEmpty, passWidth, passHeight);
+                const passTexture = createTexture(gl, passFilter, passEmpty, passWidth, passHeight);
+                this.scaler.mpvPassTargets.push(passTexture);
+                this.scaler.mpvPassTargetSizes.push([passWidth, passHeight]);
                 this.scaler.mpvTextureSizes[pass.save] = [passWidth, passHeight];
             }
             this.scaler.mpvTextureSizes.MAIN = [Math.max(1, this.scaler.inputWidth), Math.max(1, this.scaler.inputHeight)];
@@ -391,31 +447,42 @@ const quadVert = [
         if (this.mpvPasses) {
             const textureMap = { MAIN: this.scaler.inputTex };
             const textureSizes = Object.assign({}, this.scaler.mpvTextureSizes, {
+                HOOKED: [inputWidth, inputHeight],
                 MAIN: [inputWidth, inputHeight],
+                LUMA: [inputWidth, inputHeight],
             });
-            const drawTextureToCanvas = (texture) => {
+            textureMap.HOOKED = this.scaler.inputTex;
+            textureMap.LUMA = this.scaler.inputTex;
+            const drawTextureToCanvas = (texture, preserveColorFromSource) => {
                 bindFramebuffer(gl, null);
                 gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-                gl.useProgram(p.programDraw.program);
-                bindAttribute(gl, this.scaler.quadBuffer, p.programDraw.a_pos, 2);
-                bindTexture(gl, texture, 0);
-                gl.uniform1i(p.programDraw.u_texture, 0);
+                if (preserveColorFromSource && p.programDrawLuma) {
+                    gl.useProgram(p.programDrawLuma.program);
+                    bindAttribute(gl, this.scaler.quadBuffer, p.programDrawLuma.a_pos, 2);
+                    bindTexture(gl, texture, 0);
+                    bindTexture(gl, this.scaler.inputTex, 1);
+                    gl.uniform1i(p.programDrawLuma.u_luma, 0);
+                    gl.uniform1i(p.programDrawLuma.u_source, 1);
+                } else {
+                    gl.useProgram(p.programDraw.program);
+                    bindAttribute(gl, this.scaler.quadBuffer, p.programDraw.a_pos, 2);
+                    bindTexture(gl, texture, 0);
+                    gl.uniform1i(p.programDraw.u_texture, 0);
+                }
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
             };
 
             let finalTexture = this.scaler.inputTex;
             for (let passIndex = 0; passIndex < p.passes.length; passIndex++) {
                 const pass = p.passes[passIndex];
-                const targetTexture = pass.save === "MAIN" ? this.scaler.outputTexture : this.scaler.mpvTextures[pass.save];
+                const targetTexture = this.scaler.mpvPassTargets[passIndex];
                 if (!targetTexture) {
                     if (this.debugLogs) {
                         console.error("[ShaderMpvMissingTarget]", { passIndex: passIndex, save: pass.save });
                     }
                     return;
                 }
-                const targetSize = pass.save === "MAIN"
-                    ? [canvasWidth, canvasHeight]
-                    : (this.scaler.mpvTextureSizes[pass.save] || [inputWidth, inputHeight]);
+                const targetSize = this.scaler.mpvPassTargetSizes[passIndex] || [canvasWidth, canvasHeight];
                 gl.viewport(0, 0, targetSize[0], targetSize[1]);
                 bindFramebuffer(gl, this.scaler.framebuffer, targetTexture);
                 const fbStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
@@ -463,13 +530,18 @@ const quadVert = [
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
 
                 textureMap[pass.save] = targetTexture;
-                textureSizes[pass.save] = pass.save === "MAIN"
-                    ? [canvasWidth, canvasHeight]
-                    : (this.scaler.mpvTextureSizes[pass.save] || [inputWidth, inputHeight]);
+                textureSizes[pass.save] = targetSize;
+                textureMap.HOOKED = targetTexture;
+                textureSizes.HOOKED = textureSizes[pass.save];
+                if (pass.hook === "LUMA" || pass.save === "LUMA") {
+                    textureMap.LUMA = targetTexture;
+                    textureSizes.LUMA = textureSizes[pass.save];
+                }
                 finalTexture = targetTexture;
             }
 
-            drawTextureToCanvas(finalTexture);
+            const finalPass = p.passes[p.passes.length - 1];
+            drawTextureToCanvas(finalTexture, finalPass && finalPass.save === "LUMA");
             return;
         }
 

@@ -64,7 +64,41 @@ function rewriteDynamicVec4Indexing(shader) {
         rewritten = replaceFloatFunction(rewritten, "APrxLoRcpF1", "float APrxLoRcpF1(float a) {\n return 1.0 / a;\n}");
         rewritten = replaceFloatFunction(rewritten, "APrxLoRsqF1", "float APrxLoRsqF1(float a) {\n return inversesqrt(a);\n}");
         rewritten = replaceFloatFunction(rewritten, "APrxMedRcpF1", "float APrxMedRcpF1(float a) {\n return 1.0 / a;\n}");
+        rewritten = replaceFloatFunction(rewritten, "APrxLoSqrtF1", "float APrxLoSqrtF1(float a) {\n return sqrt(a);\n}");
+        rewritten = rewritten.replace(
+            /texelFetch\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)_raw\s*,\s*sp\s*(?:\+\s*ivec2\s*\(\s*([-+]?[0-9]+)\s*,\s*([-+]?[0-9]+)\s*\))?\s*,\s*0\s*\)\s*\.r\s*\*\s*\1_mul/g,
+            function (_match, samplerName, xOffset, yOffset) {
+                const x = Number(xOffset || 0) + 0.5;
+                const y = Number(yOffset || 0) + 0.5;
+                return samplerName + "_tex(vec2((fp + vec2(" + x.toFixed(1) + ", " + y.toFixed(1) + ")) * " + samplerName + "_pt)).r";
+            }
+        );
         return rewritten;
+    }
+
+    function replaceDefine(shader, name, value) {
+        const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const formatValue = function (rawValue, oldValue) {
+            if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+                if (oldValue && oldValue.includes(".") && Number.isInteger(rawValue)) {
+                    return rawValue.toFixed(1);
+                }
+                return String(rawValue);
+            }
+            return String(rawValue);
+        };
+        const definePattern = new RegExp(
+            "^(\\s*#define\\s+" + escapedName + "\\s+)([^\\r\\n/]*?)(\\s*(?://.*)?)$",
+            "m"
+        );
+        if (definePattern.test(shader)) {
+            return shader.replace(definePattern, function (_match, prefix, oldValue, suffix) {
+                const formattedValue = formatValue(value, oldValue.trim());
+                return prefix + formattedValue + suffix;
+            });
+        }
+        const replacement = "#define " + name + " " + formatValue(value, "");
+        return replacement + "\n" + shader;
     }
 
 function buildFragmentShaderFromBlock(blockLines, options) {
@@ -108,6 +142,7 @@ function buildFragmentShaderFromBlock(blockLines, options) {
             return "";
         };
 
+        const hook = readDirectiveValue("//!HOOK ");
         const variables = Array.from(samplers).sort();
         const header = [
             "#ifdef GL_FRAGMENT_PRECISION_HIGH",
@@ -133,11 +168,24 @@ function buildFragmentShaderFromBlock(blockLines, options) {
         header.push("");
 
         for (const v of variables) {
+            const shouldConvertToLuma = hook === "LUMA" && (v === "HOOKED" || v === "MAIN" || v === "LUMA");
             header.push("vec4 " + v + "_tex(vec2 pos) {");
-            header.push("    return texture2D(" + v + ", pos);");
+            if (shouldConvertToLuma) {
+                header.push("    vec4 color = texture2D(" + v + ", pos);");
+                header.push("    float luma = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));");
+                header.push("    return vec4(luma, luma, luma, color.a);");
+            } else {
+                header.push("    return texture2D(" + v + ", pos);");
+            }
             header.push("}");
             header.push("vec4 " + v + "_texOff(vec2 off) {");
-            header.push("    return texture2D(" + v + ", v_tex_pos + off * " + v + "_pt);");
+            if (shouldConvertToLuma) {
+                header.push("    vec4 color = texture2D(" + v + ", v_tex_pos + off * " + v + "_pt);");
+                header.push("    float luma = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));");
+                header.push("    return vec4(luma, luma, luma, color.a);");
+            } else {
+                header.push("    return texture2D(" + v + ", v_tex_pos + off * " + v + "_pt);");
+            }
             header.push("}");
         }
         header.push("");
@@ -157,7 +205,10 @@ function buildFragmentShaderFromBlock(blockLines, options) {
             shader: shader,
             samplers: variables,
             save: readDirectiveValue("//!SAVE ") || readDirectiveValue("//!HOOK "),
+            hook: hook,
             description: readDirectiveValue("//!DESC "),
+            width: readDirectiveValue("//!WIDTH "),
+            height: readDirectiveValue("//!HEIGHT "),
             directives: directives,
         };
     }
@@ -228,5 +279,6 @@ function buildFragmentShaderFromBlock(blockLines, options) {
     global.ShaderParser = {
         loadMpvShaderPassesOrThrow: loadMpvShaderPassesOrThrow,
         makeWebGL1Compatible: rewriteWebGL1UnsupportedFunctions,
+        replaceDefine: replaceDefine,
     };
 })(window);
