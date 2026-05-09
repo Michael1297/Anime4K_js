@@ -50,5 +50,6 @@ const FSR_RCAS_SHARPNESS = 0.2; // 0.0 is sharpest, higher values reduce sharpen
         mpvPasses: mpvPasses,
         debugLogs: ENABLE_SHADER_DEBUG_LOGS,
         useNearestIntermediate: true,
+        maxScale: 4.0,
     });
 })();

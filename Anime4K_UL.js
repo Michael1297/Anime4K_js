@@ -42,5 +42,6 @@ const ENABLE_SHADER_DEBUG_LOGS = false;
         mpvPasses: mpvPasses,
         debugLogs: ENABLE_SHADER_DEBUG_LOGS,
         useNearestIntermediate: true,
+        maxScale: 2.0,
     });
 })();

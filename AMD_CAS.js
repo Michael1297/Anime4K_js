@@ -50,5 +50,6 @@ const CAS_SHARPENING = 0.0; // 0.0 to 1.0, higher values increase high-contrast 
         mpvPasses: mpvPasses,
         debugLogs: ENABLE_SHADER_DEBUG_LOGS,
         useNearestIntermediate: true,
+        maxScale: 4.0,
     });
 })();

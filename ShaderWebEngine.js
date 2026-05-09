@@ -203,6 +203,9 @@ const quadVert = [
         this.mpvPasses = config.mpvPasses || [];
         this.debugLogs = !!config.debugLogs;
         this.useNearestIntermediate = config.useNearestIntermediate !== false;
+        this.targetHeight = config.targetHeight || null;
+        this.minScale = Number.isFinite(config.minScale) ? config.minScale : 1.0;
+        this.maxScale = Number.isFinite(config.maxScale) ? config.maxScale : 2.0;
         this.scaler = null;
         this.mov = null;
         this.board = null;
@@ -212,6 +215,30 @@ const quadVert = [
         this.previousDelta = 0;
         this.fpsLimit = 30;
     }
+
+    RuntimeEngine.prototype.getTargetHeight = function () {
+        if (typeof this.targetHeight === "function") {
+            return Math.max(1, Number(this.targetHeight(this.scaler.inputMov, this.board)) || 1);
+        }
+        if (Number.isFinite(this.targetHeight)) {
+            return Math.max(1, this.targetHeight);
+        }
+
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const parent = this.board && this.board.parentElement;
+        const parentRect = parent && parent.getBoundingClientRect ? parent.getBoundingClientRect() : null;
+        if (parentRect && parentRect.height > 0) {
+            return Math.max(1, Math.round(parentRect.height * dpr));
+        }
+
+        const boardRect = this.board && this.board.getBoundingClientRect ? this.board.getBoundingClientRect() : null;
+        if (boardRect && boardRect.height > 0) {
+            return Math.max(1, Math.round(boardRect.height * dpr));
+        }
+
+        const screenHeight = window.screen ? window.screen.height : 0;
+        return Math.max(1, Math.round((screenHeight || 1440) * dpr));
+    };
 
     RuntimeEngine.prototype.inputVideo = function (mov) {
         const gl = this.scaler.gl;
@@ -275,6 +302,9 @@ const quadVert = [
         if (this.debugLogs) {
             console.log("[ShaderResize]", {
                 scale: scale,
+                targetHeight: this.getTargetHeight(),
+                minScale: this.minScale,
+                maxScale: this.maxScale,
                 inputWidth: this.scaler.inputWidth,
                 inputHeight: this.scaler.inputHeight,
                 canvasWidth: gl.canvas.width,
@@ -286,17 +316,60 @@ const quadVert = [
 
     RuntimeEngine.prototype.resizeBoard = function (originRatio, newRatio) {
         if (Math.abs(originRatio - newRatio) <= 0.001) {
+            this.board.style.width = "100%";
+            this.board.style.height = "100%";
+            this.board.style.marginLeft = "0";
+            this.board.style.marginTop = "0";
             return;
         }
         if (originRatio > newRatio) {
             const newHeight = (newRatio / originRatio) * 100;
+            this.board.style.width = "100%";
             this.board.style.height = newHeight + "%";
-            this.board.style.marginTop = (100 - newHeight) / 3 + "%";
+            this.board.style.marginLeft = "0";
+            this.board.style.marginTop = (100 - newHeight) / 2 + "%";
         } else {
             const newWidth = (originRatio / newRatio) * 100;
+            this.board.style.height = "100%";
             this.board.style.width = newWidth + "%";
+            this.board.style.marginTop = "0";
             this.board.style.marginLeft = (100 - newWidth) / 2 + "%";
         }
+    };
+
+    RuntimeEngine.prototype.getBoardContainerRatio = function () {
+        const parent = this.board && this.board.parentElement;
+        const rect = parent && parent.getBoundingClientRect ? parent.getBoundingClientRect() : null;
+        const width = rect && rect.width > 0 ? rect.width : window.innerWidth;
+        const height = rect && rect.height > 0 ? rect.height : window.innerHeight;
+        return Math.max(1, width) / Math.max(1, height);
+    };
+
+    RuntimeEngine.prototype.getBoardLayoutKey = function () {
+        const mov = this.scaler && this.scaler.inputMov;
+        const vw = mov && mov.videoWidth ? mov.videoWidth : 0;
+        const vh = mov && mov.videoHeight ? mov.videoHeight : 0;
+        const parent = this.board && this.board.parentElement;
+        const rect = parent && parent.getBoundingClientRect ? parent.getBoundingClientRect() : null;
+        const pw = rect && rect.width > 0 ? Math.round(rect.width) : Math.round(window.innerWidth);
+        const ph = rect && rect.height > 0 ? Math.round(rect.height) : Math.round(window.innerHeight);
+        const fs = document.fullscreenElement ? "1" : "0";
+        return vw + "x" + vh + "@" + pw + "x" + ph + "@" + fs;
+    };
+
+    RuntimeEngine.prototype.maybeResizeBoard = function () {
+        if (!this.board || !this.scaler) {
+            return;
+        }
+        const key = this.getBoardLayoutKey();
+        if (key === this.scaler.boardLayoutKey) {
+            return;
+        }
+        this.scaler.boardLayoutKey = key;
+        const videoRatio = this.scaler.inputMov && this.scaler.inputMov.videoHeight > 0
+            ? this.scaler.inputMov.videoWidth / this.scaler.inputMov.videoHeight
+            : 16 / 9;
+        this.resizeBoard(videoRatio, this.getBoardContainerRatio());
     };
 
     RuntimeEngine.prototype.renderFrame = async function () {
@@ -324,22 +397,14 @@ const quadVert = [
             this.inputVideo(freshMov);
         }
 
-        const videoRatio = this.scaler.inputMov.videoWidth / this.scaler.inputMov.videoHeight;
-        if (document.fullscreenElement != null) {
-            if (!this.scaler.isFullscreen) {
-                this.resizeBoard(videoRatio, this.scaler.screenRatio);
-                this.scaler.isFullscreen = true;
-            }
-        } else if (this.scaler.isFullscreen) {
-            this.board.style.width = "100%";
-            this.board.style.height = "100%";
-            this.board.style.marginLeft = null;
-            this.board.style.marginTop = null;
-            this.resizeBoard(videoRatio, this.scaler.playerRatio);
-            this.scaler.isFullscreen = false;
-        }
+        this.maybeResizeBoard();
+        this.scaler.isFullscreen = document.fullscreenElement != null;
 
         if (this.scaler.inputMov.paused) {
+            if (!this.scaler.hasRenderedFrame) {
+                this.board.style.display = "none";
+                this.scaler.inputMov.style.display = "";
+            }
             return;
         }
 
@@ -363,9 +428,8 @@ const quadVert = [
             return;
         }
 
-        // Anime4K UL/VL model used here is x2; scaling above 2x produces unstable colors/artifacts.
-        const autoScale = 1440 / this.scaler.inputMov.videoHeight;
-        const newScale = Math.min(2.0, Math.max(1.0, autoScale));
+        const autoScale = this.getTargetHeight() / this.scaler.inputMov.videoHeight;
+        const newScale = Math.min(this.maxScale, Math.max(this.minScale, autoScale));
         if (this.scaler.scale !== newScale) {
             this.resize(newScale);
             this.scaler.scale = newScale;
@@ -476,6 +540,11 @@ const quadVert = [
 
         const finalPass = p.passes[p.passes.length - 1];
         drawTextureToCanvas(finalTexture, finalPass && finalPass.save === "LUMA");
+        if (!this.scaler.hasRenderedFrame) {
+            this.scaler.hasRenderedFrame = true;
+            this.board.style.display = "";
+            this.scaler.inputMov.style.display = "none";
+        }
 
     };
 
@@ -548,8 +617,8 @@ const quadVert = [
                     pipeline: null,
                     outputTexture: null,
                     scale: 1.0,
-                    screenRatio: window.screen.width / window.screen.height,
-                    playerRatio: 16 / 9,
+                    hasRenderedFrame: false,
+                    boardLayoutKey: null,
                     isFullscreen: true,
                 };
                 self.scaler.quadBuffer = createBuffer(self.scaler.gl, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]));
@@ -588,6 +657,7 @@ const quadVert = [
             this.board = document.createElement("canvas");
             this.board.style.width = "100%";
             this.board.style.height = "100%";
+            this.board.style.display = "none";
             const fallbackWidth = Math.max(1, this.mov.clientWidth || this.mov.videoWidth || 1);
             const fallbackHeight = Math.max(1, this.mov.clientHeight || this.mov.videoHeight || 1);
             this.board.width = this.board.offsetWidth || fallbackWidth;
@@ -604,7 +674,21 @@ const quadVert = [
             }
         }
         div.appendChild(this.board);
-        this.mov.style.display = "none";
+        if (!this.scaler || !this.scaler.hasRenderedFrame) {
+            this.board.style.display = "none";
+            this.mov.style.display = "";
+        }
+        if (!this.layoutListenersBound) {
+            this.layoutListenersBound = true;
+            const self = this;
+            const bustBoardLayout = function () {
+                if (self.scaler) {
+                    self.scaler.boardLayoutKey = null;
+                }
+            };
+            window.addEventListener("resize", bustBoardLayout, { passive: true });
+            document.addEventListener("fullscreenchange", bustBoardLayout);
+        }
     };
 
     RuntimeEngine.prototype.startRenderLoop = function () {
