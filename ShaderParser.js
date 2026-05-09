@@ -101,7 +101,7 @@ function rewriteDynamicVec4Indexing(shader) {
         return replacement + "\n" + shader;
     }
 
-function buildFragmentShaderFromBlock(blockLines, options) {
+    function buildFragmentShaderFromBlock(blockLines, options) {
         const opts = options || {};
         const directives = [];
         const body = [];
@@ -257,7 +257,7 @@ function buildFragmentShaderFromBlock(blockLines, options) {
         });
     }
 
-    async function fetchParsed(url, options) {
+    async function loadMpvShader(url, options) {
         const opts = options || {};
         console.log("Loading remote mpv shader:", url);
         const resp = await fetch(url, { cache: "no-store" });
@@ -269,16 +269,82 @@ function buildFragmentShaderFromBlock(blockLines, options) {
     }
 
     async function loadMpvShaderPassesOrThrow(url, expectedCount, options) {
-        const parsed = await fetchParsed(url, options);
+        const parsed = await loadMpvShader(url, options);
         if (parsed.length < expectedCount) {
             throw new Error("Parsed only " + parsed.length + " mpv shader passes, expected at least " + expectedCount);
         }
         return parsed;
     }
 
+    function getSingleFragmentShader(rawShader, options) {
+        const passes = parseMpvShader(rawShader, options);
+        if (passes.length !== 1) {
+            throw new Error("Expected exactly one mpv shader pass, parsed " + passes.length);
+        }
+        return typeof passes[0] === "string" ? passes[0] : passes[0].shader;
+    }
+
+    async function loadSingleFragmentShader(url, options) {
+        const passes = await loadMpvShader(url, options);
+        if (passes.length !== 1) {
+            throw new Error("Expected exactly one remote mpv shader pass, parsed " + passes.length);
+        }
+        return typeof passes[0] === "string" ? passes[0] : passes[0].shader;
+    }
+
     global.ShaderParser = {
+        parseMpvShader: parseMpvShader,
+        parseMpvShaderPasses: parseMpvShader,
+        buildFragmentShaderFromBlock: buildFragmentShaderFromBlock,
+        loadMpvShader: loadMpvShader,
         loadMpvShaderPassesOrThrow: loadMpvShaderPassesOrThrow,
+        getSingleFragmentShader: getSingleFragmentShader,
+        loadSingleFragmentShader: loadSingleFragmentShader,
         makeWebGL1Compatible: rewriteWebGL1UnsupportedFunctions,
         replaceDefine: replaceDefine,
     };
+
+    /*
+     * API examples
+     *
+     * 1. Parse a raw mpv-compatible GLSL string into WebGL1 fragment shader strings.
+     *
+     * const fragmentShaders = ShaderParser.parseMpvShader(rawGlslSource);
+     * console.log(fragmentShaders[0]); // Ready-to-compile WebGL1 fragment shader.
+     *
+     * 2. Parse a raw mpv-compatible GLSL string and keep pass metadata.
+     *
+     * const passes = ShaderParser.parseMpvShader(rawGlslSource, {
+     *     returnMetadata: true,
+     * });
+     *
+     * passes.forEach(function (pass) {
+     *     console.log(pass.description);
+     *     console.log(pass.samplers); // Example: ["HOOKED", "EASUTEX"]
+     *     console.log(pass.save);     // Example: "LUMA" or "EASUTEX"
+     *     console.log(pass.shader);   // Ready-to-compile WebGL1 fragment shader.
+     * });
+     *
+     * 3. Load and parse a remote shader URL.
+     *
+     * const remotePasses = await ShaderParser.loadMpvShader(shaderUrl, {
+     *     returnMetadata: true,
+     *     debugLogs: true,
+     * });
+     *
+     * 4. Load a known multi-pass shader and fail if too few passes were parsed.
+     *
+     * const fsrPasses = await ShaderParser.loadMpvShaderPassesOrThrow(fsrUrl, 2, {
+     *     returnMetadata: true,
+     * });
+     *
+     * 5. Get a single fragment shader string for simple one-pass shaders.
+     *
+     * const fragmentShader = ShaderParser.getSingleFragmentShader(rawSinglePassGlsl);
+     * const remoteFragmentShader = await ShaderParser.loadSingleFragmentShader(singlePassUrl);
+     *
+     * 6. Patch shader constants before compiling.
+     *
+     * const patchedShader = ShaderParser.replaceDefine(fragmentShader, "SHARPNESS", 0.2);
+     */
 })(window);
