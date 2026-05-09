@@ -28,13 +28,14 @@
 // ==/UserScript==
 
 const SHADER_URL = "https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/FSR.glsl";
+const ENABLE_SHADER_DEBUG_LOGS = false;
 
 function buildFsr1Passes(parsed) {
     if (parsed.length < 2) {
-        throw new Error("Parsed only " + parsed.length + " shader blocks, expected at least 2 for FSR1");
+        throw new Error("Parsed only " + parsed.length + " mpv shader passes, expected at least 2 for FSR1");
     }
-    const frag0 = parsed[0];
-    const frag1 = parsed[1].replaceAll("EASUTEX", "LUMAN0");
+    const frag0 = ShaderParser.makeWebGL1Compatible(parsed[0]);
+    const frag1 = ShaderParser.makeWebGL1Compatible(parsed[1]).replaceAll("EASUTEX", "LUMAN0");
     const nop2 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D LUMAN1;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(HOOKED,v_tex_pos);}";
     const nop3 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D LUMAN2;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(HOOKED,v_tex_pos);}";
     const nop4 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D LUMAN3;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(HOOKED,v_tex_pos);}";
@@ -47,9 +48,13 @@ function buildFsr1Passes(parsed) {
 }
 
 (async function () {
-    const parsed = await ShaderParser.loadMpvShaderPassesOrThrow(SHADER_URL, 2);
+    const parsed = await ShaderParser.loadMpvShaderPassesOrThrow(SHADER_URL, 2, {
+        debugLogs: ENABLE_SHADER_DEBUG_LOGS,
+        shaderDebugEnabled: ENABLE_SHADER_DEBUG_LOGS,
+    });
     const fragPasses = buildFsr1Passes(parsed);
     await ShaderEngine.run({
         fragPasses: fragPasses,
+        debugLogs: ENABLE_SHADER_DEBUG_LOGS,
     });
 })();

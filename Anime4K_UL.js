@@ -28,11 +28,17 @@
 // ==/UserScript==
 
 const SHADER_URL = "https://raw.githubusercontent.com/bloc97/Anime4K/7684e9586f8dcc738af08a1cdceb024cc184f426/glsl/Upscale/Anime4K_Upscale_CNN_x2_UL.glsl";
+const ENABLE_SHADER_DEBUG_LOGS = false;
 
 (async function () {
-    const parsed = await ShaderParser.loadMpvShaderPassesOrThrow(SHADER_URL, 10);
-    const fragPasses = parsed.slice(0, 10);
+    const mpvPasses = await ShaderParser.loadMpvShaderPassesOrThrow(SHADER_URL, 25, {
+        debugLogs: ENABLE_SHADER_DEBUG_LOGS,
+        shaderDebugEnabled: ENABLE_SHADER_DEBUG_LOGS,
+        returnMetadata: true,
+    });
     await ShaderEngine.run({
-        fragPasses: fragPasses,
+        mpvPasses: mpvPasses,
+        debugLogs: ENABLE_SHADER_DEBUG_LOGS,
+        useNearestIntermediate: true,
     });
 })();
