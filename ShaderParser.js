@@ -1,5 +1,5 @@
 (function (global) {
-    function buildFragmentShaderFromBlock(blockLines) {
+function buildFragmentShaderFromBlock(blockLines) {
         const directives = [];
         const body = [];
         const defines = new Map();
@@ -58,7 +58,7 @@
         return shader;
     }
 
-    function parseAnime4KShader(rawShader) {
+    function parseMpvShader(rawShader) {
         const lines = rawShader.split(/\r?\n/);
         const blocks = [];
         let current = [];
@@ -81,42 +81,24 @@
     }
 
     async function fetchParsed(url) {
-        console.log("Loading remote GLSL:", url);
+        console.log("Loading remote mpv shader:", url);
         const resp = await fetch(url, { cache: "no-store" });
         if (!resp.ok) {
-            throw new Error("Failed to fetch GLSL: HTTP " + resp.status);
+            throw new Error("Failed to fetch mpv shader: HTTP " + resp.status);
         }
         const raw = await resp.text();
-        return parseAnime4KShader(raw);
+        return parseMpvShader(raw);
     }
 
-    async function loadAnime4KPassesOrThrow(url, expectedCount) {
+    async function loadMpvShaderPassesOrThrow(url, expectedCount) {
         const parsed = await fetchParsed(url);
         if (parsed.length < expectedCount) {
-            throw new Error("Parsed only " + parsed.length + " shader blocks, expected at least " + expectedCount);
+            throw new Error("Parsed only " + parsed.length + " mpv shader passes, expected at least " + expectedCount);
         }
         return parsed;
     }
 
-    function buildFsr1Passes(parsed) {
-        if (parsed.length < 2) {
-            throw new Error("Parsed only " + parsed.length + " shader blocks, expected at least 2 for FSR1");
-        }
-        const frag0 = parsed[0];
-        const frag1 = parsed[1].replaceAll("EASUTEX", "LUMAN0");
-        const nop2 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D LUMAN1;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(HOOKED,v_tex_pos);}";
-        const nop3 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D LUMAN2;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(HOOKED,v_tex_pos);}";
-        const nop4 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D LUMAN3;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(HOOKED,v_tex_pos);}";
-        const nop5 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D LUMAN4;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(HOOKED,v_tex_pos);}";
-        const nop6 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D LUMAN0;\nuniform sampler2D LUMAN1;\nuniform sampler2D LUMAN2;\nuniform sampler2D LUMAN3;\nuniform sampler2D LUMAN4;\nuniform sampler2D LUMAN5;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(HOOKED,v_tex_pos);}";
-        const nop7 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=vec4(texture2D(HOOKED,v_tex_pos).rr,0.0,0.0);}";
-        const nop8 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D MMKERNEL;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(MMKERNEL,v_tex_pos);}";
-        const nop9 = "precision mediump float;\nuniform sampler2D HOOKED;\nuniform sampler2D MMKERNEL;\nuniform sampler2D LUMAN0;\nuniform vec2 HOOKED_pt;\nvarying vec2 v_tex_pos;\nvoid main(){gl_FragColor=texture2D(HOOKED,v_tex_pos);}";
-        return [frag0, frag1, nop2, nop3, nop4, nop5, nop6, nop7, nop8, nop9];
-    }
-
-    global.BilibiliShaderRuntime = {
-        loadAnime4KPassesOrThrow: loadAnime4KPassesOrThrow,
-        buildFsr1Passes: buildFsr1Passes,
+    global.ShaderParser = {
+        loadMpvShaderPassesOrThrow: loadMpvShaderPassesOrThrow,
     };
 })(window);
