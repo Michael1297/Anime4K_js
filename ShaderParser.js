@@ -50,11 +50,12 @@ function buildFragmentShaderFromBlock(blockLines) {
         header.push("");
 
         let shader = header.join("\n") + body.join("");
-        shader = shader.replace("vec4 hook()", "void main()");
-        shader = shader.replaceAll("return", "gl_FragColor =");
         shader = shader.replace(/\b[A-Z0-9_]+_pos\b/g, "v_tex_pos");
         shader = shader.replace(/\b[A-Z0-9_]+_pt\b/g, "HOOKED_pt");
         shader = shader.replace(/\b[A-Z0-9_]+_size\b/g, "1.0");
+        if (shader.includes("vec4 hook()")) {
+            shader += "\n\nvoid main() {\n    gl_FragColor = hook();\n}";
+        }
         return shader;
     }
 

@@ -1,10 +1,9 @@
 // ==UserScript==
-// @name                Bilibili_AMD_FSR1
+// @name                AMD_FSR1
 // @description         Bring AMD FSR1 to Bilibili and ACFun's HTML5 player for sharper upscaling.
-// @namespace           http://net2cn.tk/
-// @homepageURL         https://github.com/net2cn/Bilibili_Anime4K/
+// @homepageURL         https://github.com/Michael1297/Bilibili_Anime4K/
 // @version             0.5.3-fsr1
-// @author              net2cn
+// @author              Michael1297
 // @copyright           bloc97, DextroseRe, NeuroWhAI, and all contributors of Anime4K
 // @match               *://www.bilibili.com/video/av*
 // @match               *://www.bilibili.com/bangumi/play/ep*
@@ -24,11 +23,11 @@
 // @grant               none
 // @license             MIT License
 // @run-at              document-idle
-// @require             file:///C:/Users/1/IdeaProjects/Bilibili_Anime4K/ShaderParser.js
-// @require             file:///C:/Users/1/IdeaProjects/Bilibili_Anime4K/ShaderWebEngine.js
+// @require             https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/ShaderParser.js
+// @require             https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/ShaderWebEngine.js
 // ==/UserScript==
 
-const SHADER_URL = "https://gist.githubusercontent.com/agyild/82219c545228d70c5604f865ce0b0ce5/raw/2623d743b9c23f500ba086f05b385dcb1557e15d/FSR.glsl";
+const SHADER_URL = "https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/FSR.glsl";
 
 function buildFsr1Passes(parsed) {
     if (parsed.length < 2) {

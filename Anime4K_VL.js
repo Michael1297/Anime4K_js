@@ -1,10 +1,9 @@
 // ==UserScript==
-// @name                Bilibili_Anime4K_VL
+// @name                Anime4K_VL
 // @description         Bring Anime4K to Bilibili and ACFun's HTML5 player to clearify 2D anime.
-// @namespace           http://net2cn.tk/
-// @homepageURL         https://github.com/net2cn/Bilibili_Anime4K/
+// @homepageURL         https://github.com/Michael1297/Bilibili_Anime4K/
 // @version             0.5.3-vl
-// @author              net2cn
+// @author              Michael1297
 // @copyright           bloc97, DextroseRe, NeuroWhAI, and all contributors of Anime4K
 // @match               *://www.bilibili.com/video/av*
 // @match               *://www.bilibili.com/bangumi/play/ep*
@@ -24,8 +23,8 @@
 // @grant               none
 // @license             MIT License
 // @run-at              document-idle
-// @require             file:///C:/Users/1/IdeaProjects/Bilibili_Anime4K/ShaderParser.js
-// @require             file:///C:/Users/1/IdeaProjects/Bilibili_Anime4K/ShaderWebEngine.js
+// @require             https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/ShaderParser.js
+// @require             https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/ShaderWebEngine.js
 // ==/UserScript==
 
 const SHADER_URL = "https://raw.githubusercontent.com/bloc97/Anime4K/7684e9586f8dcc738af08a1cdceb024cc184f426/glsl/Upscale/Anime4K_Upscale_CNN_x2_VL.glsl";
