@@ -215,7 +215,33 @@ const quadVert = [
         this.previousDelta = 0;
         this.fpsLimit = 30;
         this.boundVideos = typeof WeakSet !== "undefined" ? new WeakSet() : null;
+        this.attemptVideoCrossOrigin = config.attemptVideoCrossOrigin === true;
     }
+
+    RuntimeEngine.prototype.tryApplyCrossOriginAnonymous = function (video) {
+        if (!this.attemptVideoCrossOrigin || !video) {
+            return;
+        }
+        if (video.crossOrigin) {
+            return;
+        }
+        if (video.readyState > 0 && (video.currentSrc || video.src)) {
+            if (this.debugLogs) {
+                console.log(
+                    "[ShaderCrossOriginSkipped] video already has a URL and started loading; " +
+                        "set attemptVideoCrossOrigin earlier (e.g. @run-at document-start) or reload after crossOrigin."
+                );
+            }
+            return;
+        }
+        try {
+            video.crossOrigin = "anonymous";
+        } catch (err) {
+            if (this.debugLogs) {
+                console.warn("[ShaderCrossOriginSkipped] could not set crossOrigin:", err);
+            }
+        }
+    };
 
     RuntimeEngine.prototype.getVideoSourceKey = function (video) {
         if (!video) {
@@ -280,6 +306,7 @@ const quadVert = [
             return;
         }
         this.bindVideoEvents(video);
+        this.tryApplyCrossOriginAnonymous(video);
         this.mov = video;
         if (video.parentElement && this.board && this.board.parentElement !== video.parentElement) {
             video.parentElement.style.backgroundColor = "black";
@@ -351,6 +378,8 @@ const quadVert = [
         this.scaler.inputTex = createTexture(gl, gl.LINEAR, new Uint8Array(width * height * 4), width, height);
         this.scaler.inputMov = mov;
         this.scaler.inputSourceKey = this.getVideoSourceKey(mov);
+        this.scaler.videoTextureUploadBlocked = false;
+        this.scaler.videoCorsBlockedLogged = false;
     };
 
     RuntimeEngine.prototype.resize = function (scale) {
@@ -517,13 +546,37 @@ const quadVert = [
             this.resize(this.scaler.scale);
         }
 
+        if (this.scaler.videoTextureUploadBlocked) {
+            return;
+        }
+
         try {
             updateTexture(gl, this.scaler.inputTex, this.scaler.inputMov);
         } catch (err) {
+            const message = err && err.message ? err.message : String(err);
+            const isCrossOriginVideo =
+                /cross-origin|cross origin|tainted|CORS|may not be loaded/i.test(message);
+            if (isCrossOriginVideo) {
+                this.scaler.videoTextureUploadBlocked = true;
+                if (!this.scaler.videoCorsBlockedLogged) {
+                    this.scaler.videoCorsBlockedLogged = true;
+                    console.warn(
+                        "[ShaderVideoCORS] WebGL cannot upload this <video> to a texture: the media is " +
+                            "cross-origin without permission to read pixels (missing or wrong CORS on the stream/CDN). " +
+                            "The player still works; shader upscaling is disabled for this source. " +
+                            "Fix requires the host to send Access-Control-Allow-Origin (and often the page to use " +
+                            "video.crossOrigin before load), which a userscript cannot reliably patch after the fact.",
+                        { currentSrc: this.scaler.inputMov.currentSrc || this.scaler.inputMov.src || "" }
+                    );
+                }
+                this.board.style.display = "none";
+                this.scaler.inputMov.style.display = "";
+                return;
+            }
             if (this.debugLogs) {
                 console.warn("[ShaderSkipFrame]", {
                     reason: "video-upload-failed",
-                    message: err && err.message ? err.message : String(err),
+                    message: message,
                     readyState: this.scaler.inputMov.readyState,
                     videoWidth: this.scaler.inputMov.videoWidth,
                     videoHeight: this.scaler.inputMov.videoHeight,
@@ -727,6 +780,7 @@ const quadVert = [
 
     RuntimeEngine.prototype.injectCanvas = async function () {
         this.mov = await this.getVideoTag();
+        this.tryApplyCrossOriginAnonymous(this.mov);
         let div = this.mov.parentElement;
         if (window.location.href.toLowerCase().includes("bilibili.com")) {
             while (div.className !== "bilibili-player-video") {
