@@ -1,4 +1,17 @@
 (function (global) {
+    function chooseNativeControlsOverlay(config) {
+        const cfg = config || {};
+        if (cfg.nativeControlsOverlayLayer === true) {
+            return true;
+        }
+        if (cfg.nativeControlsOverlayLayer === false) {
+            return false;
+        }
+        const href = (window.location.href || "").toLowerCase().split("#")[0];
+        const path = (window.location.pathname || "").toLowerCase();
+        return /\.(mp4|m4v|webm|ogv|mov)(\?|$)/.test(path) || /\.(mp4|m4v|webm|ogv|mov)(\?|$)/.test(href);
+    }
+
 const quadVert = [
         "precision mediump float;",
         "",
@@ -216,7 +229,134 @@ const quadVert = [
         this.fpsLimit = 30;
         this.boundVideos = typeof WeakSet !== "undefined" ? new WeakSet() : null;
         this.attemptVideoCrossOrigin = config.attemptVideoCrossOrigin === true;
+        this.nativeControlsOverlayLayer = chooseNativeControlsOverlay(config);
     }
+
+    RuntimeEngine.prototype.resetVideoForComposite = function (video) {
+        if (!video) {
+            return;
+        }
+        video.style.display = "";
+        video.style.opacity = "";
+        video.style.pointerEvents = "";
+        video.style.clipPath = "";
+        video.style.webkitClipPath = "";
+        if (this.board) {
+            this.board.style.clipPath = "";
+            this.board.style.webkitClipPath = "";
+        }
+    };
+
+    RuntimeEngine.prototype.applyNativeControlsOverlay = function (video) {
+        if (!video) {
+            return;
+        }
+        const controlsHeight = Math.max(36, Number(this.config.nativeControlsOverlayHeight) || 72);
+        video.controls = true;
+        video.style.display = "";
+        video.style.opacity = "";
+        video.style.pointerEvents = "auto";
+        video.style.clipPath = "";
+        video.style.webkitClipPath = "";
+        if (this.board) {
+            this.board.style.pointerEvents = "none";
+            this.board.style.clipPath = "inset(0 0 " + controlsHeight + "px 0)";
+            this.board.style.webkitClipPath = this.board.style.clipPath;
+        }
+    };
+
+    RuntimeEngine.prototype.getNativeControlsOverlayContainer = function (video) {
+        if (!this.nativeControlsOverlayLayer || !video || !video.parentElement) {
+            return video ? video.parentElement : null;
+        }
+        if (this.nativeControlsOverlayHost && this.nativeControlsOverlayHost.contains(video)) {
+            return this.nativeControlsOverlayHost;
+        }
+
+        const parent = video.parentElement;
+        const host = document.createElement("div");
+        host.className = "shader-native-controls-overlay-host";
+        host.style.position = "fixed";
+        host.style.left = "0";
+        host.style.top = "0";
+        host.style.width = "100vw";
+        host.style.height = "100vh";
+        host.style.margin = "0";
+        host.style.padding = "0";
+        host.style.backgroundColor = "black";
+        host.style.overflow = "hidden";
+        host.style.zIndex = "2147483647";
+
+        parent.insertBefore(host, video);
+        host.appendChild(video);
+        this.nativeControlsOverlayHost = host;
+        document.documentElement.style.backgroundColor = "black";
+        document.body.style.margin = "0";
+        document.body.style.backgroundColor = "black";
+        document.body.style.overflow = "hidden";
+        return host;
+    };
+
+    RuntimeEngine.prototype.applyBoardLayerStyling = function (container, video) {
+        if (!this.board || !container || !video) {
+            return;
+        }
+        if (this.nativeControlsOverlayLayer) {
+            if (!container.style.position || container.style.position === "static") {
+                container.style.position = "relative";
+            }
+            this.board.style.position = "absolute";
+            this.board.style.left = "0";
+            this.board.style.top = "0";
+            this.board.style.width = "100%";
+            this.board.style.height = "100%";
+            this.board.style.marginLeft = "0";
+            this.board.style.marginTop = "0";
+            this.board.style.zIndex = "1";
+            this.board.style.pointerEvents = "none";
+            video.style.position = "absolute";
+            video.style.left = "0";
+            video.style.top = "0";
+            video.style.width = "100%";
+            video.style.height = "100%";
+            video.style.margin = "0";
+            video.style.objectFit = "contain";
+            video.style.zIndex = "0";
+        } else {
+            this.board.style.position = "";
+            this.board.style.left = "";
+            this.board.style.top = "";
+            this.board.style.right = "";
+            this.board.style.bottom = "";
+            this.board.style.clipPath = "";
+            this.board.style.webkitClipPath = "";
+            this.board.style.zIndex = "";
+            this.board.style.pointerEvents = "";
+            if (video.style.zIndex === "0" || video.style.zIndex === "1") {
+                video.style.zIndex = "";
+            }
+            video.style.clipPath = "";
+            video.style.webkitClipPath = "";
+        }
+    };
+
+    RuntimeEngine.prototype.attachBoardNearVideo = function (container, video) {
+        if (!this.board || !container || !video) {
+            return;
+        }
+        this.applyBoardLayerStyling(container, video);
+        if (this.nativeControlsOverlayLayer) {
+            if (this.board.parentNode !== container) {
+                container.appendChild(this.board);
+            } else if (this.board.previousSibling !== video) {
+                container.appendChild(this.board);
+            }
+        } else if (this.board.parentNode !== container) {
+            container.appendChild(this.board);
+        } else if (this.board.previousSibling !== video && this.board.parentNode === container) {
+            container.appendChild(this.board);
+        }
+    };
 
     RuntimeEngine.prototype.tryApplyCrossOriginAnonymous = function (video) {
         if (!this.attemptVideoCrossOrigin || !video) {
@@ -308,9 +448,12 @@ const quadVert = [
         this.bindVideoEvents(video);
         this.tryApplyCrossOriginAnonymous(video);
         this.mov = video;
-        if (video.parentElement && this.board && this.board.parentElement !== video.parentElement) {
-            video.parentElement.style.backgroundColor = "black";
-            video.parentElement.appendChild(this.board);
+        if (video.parentElement && this.board) {
+            const container = this.nativeControlsOverlayLayer
+                ? this.getNativeControlsOverlayContainer(video)
+                : video.parentElement;
+            container.style.backgroundColor = "black";
+            this.attachBoardNearVideo(container, video);
         }
         this.inputVideo(video);
         this.resize(this.scaler.scale);
@@ -318,7 +461,7 @@ const quadVert = [
         this.scaler.hasRenderedFrame = false;
         this.scaler.boardLayoutKey = null;
         this.board.style.display = "none";
-        video.style.display = "";
+        this.resetVideoForComposite(video);
         if (this.debugLogs) {
             console.log("[ShaderVideoSwitch]", {
                 reason: reason,
@@ -536,7 +679,7 @@ const quadVert = [
         if (this.scaler.inputMov.paused) {
             if (!this.scaler.hasRenderedFrame) {
                 this.board.style.display = "none";
-                this.scaler.inputMov.style.display = "";
+                this.resetVideoForComposite(this.scaler.inputMov);
             }
             return;
         }
@@ -570,7 +713,7 @@ const quadVert = [
                     );
                 }
                 this.board.style.display = "none";
-                this.scaler.inputMov.style.display = "";
+                this.resetVideoForComposite(this.scaler.inputMov);
                 return;
             }
             if (this.debugLogs) {
@@ -700,7 +843,15 @@ const quadVert = [
         if (!this.scaler.hasRenderedFrame) {
             this.scaler.hasRenderedFrame = true;
             this.board.style.display = "";
-            this.scaler.inputMov.style.display = "none";
+            if (this.nativeControlsOverlayLayer) {
+                this.applyNativeControlsOverlay(this.scaler.inputMov);
+            } else {
+                this.scaler.inputMov.style.display = "none";
+                this.scaler.inputMov.style.opacity = "";
+                this.scaler.inputMov.style.pointerEvents = "";
+                this.scaler.inputMov.style.clipPath = "";
+                this.scaler.inputMov.style.webkitClipPath = "";
+            }
         }
 
     };
@@ -788,6 +939,9 @@ const quadVert = [
             }
             div = this.mov.parentElement;
         }
+        if (this.nativeControlsOverlayLayer) {
+            div = this.getNativeControlsOverlayContainer(this.mov);
+        }
         div.style.backgroundColor = "black";
         if (!this.board) {
             this.board = document.createElement("canvas");
@@ -809,13 +963,13 @@ const quadVert = [
                 });
             }
         }
-        div.appendChild(this.board);
+        this.attachBoardNearVideo(div, this.mov);
         if (!this.scaler && this.initializeScaler && this.mov.videoWidth > 0 && this.mov.videoHeight > 0) {
             this.initializeScaler();
         }
         if (!this.scaler || !this.scaler.hasRenderedFrame) {
             this.board.style.display = "none";
-            this.mov.style.display = "";
+            this.resetVideoForComposite(this.mov);
         }
         if (!this.layoutListenersBound) {
             this.layoutListenersBound = true;
