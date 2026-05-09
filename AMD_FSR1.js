@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name                AMD_FSR1
-// @description         Bring AMD FSR1 to Bilibili and ACFun's HTML5 player for sharper upscaling.
+// @description         Bring AMD FSR1 to HTML5 players for sharper upscaling.
 // @homepageURL         https://github.com/Michael1297/Anime4K_js/
 // @version             0.6.0-fsr1
 // @author              Michael1297

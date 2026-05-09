@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name                Anime4K_VL
-// @description         Bring Anime4K to Bilibili and ACFun's HTML5 player to clearify 2D anime.
+// @description         Bring Anime4K to HTML5 players to clearify 2D anime.
 // @homepageURL         https://github.com/Michael1297/Anime4K_js/
 // @version             0.6.0-vl
 // @author              Michael1297
