@@ -214,7 +214,109 @@ const quadVert = [
         this.updateId = null;
         this.previousDelta = 0;
         this.fpsLimit = 30;
+        this.boundVideos = typeof WeakSet !== "undefined" ? new WeakSet() : null;
     }
+
+    RuntimeEngine.prototype.getVideoSourceKey = function (video) {
+        if (!video) {
+            return "";
+        }
+        return [
+            video.currentSrc || video.src || "",
+            video.videoWidth || 0,
+            video.videoHeight || 0,
+        ].join("|");
+    };
+
+    RuntimeEngine.prototype.findBestVideo = function () {
+        const videos = Array.from(document.getElementsByTagName("video"));
+        if (videos.length === 0) {
+            return null;
+        }
+        let best = videos[0];
+        let bestScore = -1;
+        for (const video of videos) {
+            const width = video.videoWidth || video.clientWidth || 0;
+            const height = video.videoHeight || video.clientHeight || 0;
+            const areaScore = width * height;
+            const readyBonus = video.readyState >= 2 ? 100000000 : 0;
+            const playingBonus = !video.paused ? 1000000 : 0;
+            const connectedPenalty = video.isConnected === false ? -1000000000 : 0;
+            const score = areaScore + readyBonus + playingBonus + connectedPenalty;
+            if (score > bestScore) {
+                best = video;
+                bestScore = score;
+            }
+        }
+        return best;
+    };
+
+    RuntimeEngine.prototype.bindVideoEvents = function (video) {
+        if (!video || (this.boundVideos && this.boundVideos.has(video))) {
+            return;
+        }
+        if (this.boundVideos) {
+            this.boundVideos.add(video);
+        }
+        const self = this;
+        video.addEventListener("loadedmetadata", function () {
+            if (!self.scaler && self.initializeScaler && self.board) {
+                self.initializeScaler();
+                return;
+            }
+            if (self.scaler && self.scaler.inputMov === video) {
+                self.inputVideo(video);
+                self.resize(self.scaler.scale);
+                self.scaler.boardLayoutKey = null;
+            }
+        }, true);
+        video.addEventListener("error", function () {
+            console.error("ShaderEngine video element error:", video.error);
+        }, true);
+    };
+
+    RuntimeEngine.prototype.switchInputVideo = function (video, reason) {
+        if (!video || !this.scaler) {
+            return;
+        }
+        this.bindVideoEvents(video);
+        this.mov = video;
+        if (video.parentElement && this.board && this.board.parentElement !== video.parentElement) {
+            video.parentElement.style.backgroundColor = "black";
+            video.parentElement.appendChild(this.board);
+        }
+        this.inputVideo(video);
+        this.resize(this.scaler.scale);
+        this.scaler.inputSourceKey = this.getVideoSourceKey(video);
+        this.scaler.hasRenderedFrame = false;
+        this.scaler.boardLayoutKey = null;
+        this.board.style.display = "none";
+        video.style.display = "";
+        if (this.debugLogs) {
+            console.log("[ShaderVideoSwitch]", {
+                reason: reason,
+                currentSrc: video.currentSrc || video.src || "",
+                videoWidth: video.videoWidth,
+                videoHeight: video.videoHeight,
+            });
+        }
+    };
+
+    RuntimeEngine.prototype.maybeSwitchInputVideo = function () {
+        if (!this.scaler) {
+            return;
+        }
+        const current = this.scaler.inputMov;
+        const best = this.findBestVideo();
+        if (best && best !== current && (!current || current.isConnected === false || !best.paused || best.readyState >= 2)) {
+            this.switchInputVideo(best, "video-element-changed");
+            return;
+        }
+        const sourceKey = this.getVideoSourceKey(current);
+        if (sourceKey && sourceKey !== this.scaler.inputSourceKey) {
+            this.switchInputVideo(current, "video-source-changed");
+        }
+    };
 
     RuntimeEngine.prototype.getTargetHeight = function () {
         if (typeof this.targetHeight === "function") {
@@ -248,6 +350,7 @@ const quadVert = [
         this.scaler.inputHeight = height;
         this.scaler.inputTex = createTexture(gl, gl.LINEAR, new Uint8Array(width * height * 4), width, height);
         this.scaler.inputMov = mov;
+        this.scaler.inputSourceKey = this.getVideoSourceKey(mov);
     };
 
     RuntimeEngine.prototype.resize = function (scale) {
@@ -378,6 +481,7 @@ const quadVert = [
         }
         const gl = this.scaler.gl;
         const p = this.scaler.pipeline;
+        this.maybeSwitchInputVideo();
         const mov = this.scaler.inputMov;
 
         if (!mov || mov.readyState < 2 || mov.videoWidth <= 0 || mov.videoHeight <= 0) {
@@ -577,34 +681,13 @@ const quadVert = [
     };
 
     RuntimeEngine.prototype.getVideoTag = async function () {
-        const pickBestVideo = function () {
-            const videos = Array.from(document.getElementsByTagName("video"));
-            if (videos.length === 0) {
-                return null;
-            }
-            let best = videos[0];
-            let bestScore = -1;
-            for (const video of videos) {
-                const width = video.videoWidth || video.clientWidth || 0;
-                const height = video.videoHeight || video.clientHeight || 0;
-                const areaScore = width * height;
-                const readyBonus = video.readyState >= 2 ? 100000000 : 0;
-                const playingBonus = !video.paused ? 1000000 : 0;
-                const score = areaScore + readyBonus + playingBonus;
-                if (score > bestScore) {
-                    best = video;
-                    bestScore = score;
-                }
-            }
-            return best;
-        };
-
         while (document.getElementsByTagName("video").length <= 0) {
             await new Promise(function (r) { setTimeout(r, 500); });
         }
-        this.mov = pickBestVideo();
+        this.mov = this.findBestVideo();
         const self = this;
-        this.mov.addEventListener("loadedmetadata", function () {
+        this.bindVideoEvents(this.mov);
+        const initializeScaler = function () {
             if (!self.scaler) {
                 self.scaler = {
                     gl: self.board.getContext("webgl"),
@@ -617,6 +700,7 @@ const quadVert = [
                     pipeline: null,
                     outputTexture: null,
                     scale: 1.0,
+                    inputSourceKey: "",
                     hasRenderedFrame: false,
                     boardLayoutKey: null,
                     isFullscreen: true,
@@ -636,10 +720,8 @@ const quadVert = [
             self.inputVideo(self.mov);
             self.resize(self.scale);
             self.scaler.scale = self.scale;
-        }, true);
-        this.mov.addEventListener("error", function () {
-            alert("Can't get video, sorry.");
-        }, true);
+        };
+        this.initializeScaler = initializeScaler;
         return this.mov;
     };
 
@@ -674,6 +756,9 @@ const quadVert = [
             }
         }
         div.appendChild(this.board);
+        if (!this.scaler && this.initializeScaler && this.mov.videoWidth > 0 && this.mov.videoHeight > 0) {
+            this.initializeScaler();
+        }
         if (!this.scaler || !this.scaler.hasRenderedFrame) {
             this.board.style.display = "none";
             this.mov.style.display = "";
