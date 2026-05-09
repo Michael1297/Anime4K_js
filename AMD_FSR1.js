@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name                AMD_FSR1
 // @description         Bring AMD FSR1 to Bilibili and ACFun's HTML5 player for sharper upscaling.
-// @homepageURL         https://github.com/Michael1297/Bilibili_Anime4K/
-// @version             0.5.3-fsr1
+// @homepageURL         https://github.com/Michael1297/Anime4K_js/
+// @version             0.6.0-fsr1
 // @author              Michael1297
 // @copyright           bloc97, DextroseRe, NeuroWhAI, and all contributors of Anime4K
 // @match               *://www.bilibili.com/video/av*
@@ -21,13 +21,15 @@
 // @match               *://*.vk.com/video_ext.php?*
 // @match               *://*.animaunt.*/*
 // @grant               none
+// @downloadURL         https://raw.githubusercontent.com/Michael1297/Anime4K_js/refs/heads/master/AMD_FSR1.js
+// @updateURL           https://raw.githubusercontent.com/Michael1297/Anime4K_js/refs/heads/master/AMD_FSR1.js
 // @license             MIT License
 // @run-at              document-idle
-// @require             https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/ShaderParser.js
-// @require             https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/ShaderWebEngine.js
+// @require             https://raw.githubusercontent.com/Michael1297/Anime4K_js/refs/heads/master/ShaderParser.js
+// @require             https://raw.githubusercontent.com/Michael1297/Anime4K_js/refs/heads/master/ShaderWebEngine.js
 // ==/UserScript==
 
-const SHADER_URL = "https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/FSR.glsl";
+const SHADER_URL = "https://raw.githubusercontent.com/Michael1297/Anime4K_js/refs/heads/master/FSR.glsl";
 const ENABLE_SHADER_DEBUG_LOGS = false;
 
 function buildFsr1Passes(parsed) {

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name                Anime4K_UL
 // @description         Bring Anime4K to Bilibili and ACFun's HTML5 player to clearify 2D anime.
-// @homepageURL         https://github.com/Michael1297/Bilibili_Anime4K/
-// @version             0.5.3-ul
+// @homepageURL         https://github.com/Michael1297/Anime4K_js/
+// @version             0.6.0-ul
 // @author              Michael1297
 // @copyright           bloc97, DextroseRe, NeuroWhAI, and all contributors of Anime4K
 // @match               *://www.bilibili.com/video/av*
@@ -21,10 +21,12 @@
 // @match               *://*.vk.com/video_ext.php?*
 // @match               *://*.animaunt.*/*
 // @grant               none
+// @downloadURL         https://raw.githubusercontent.com/Michael1297/Anime4K_js/refs/heads/master/Anime4K_UL.js
+// @updateURL           https://raw.githubusercontent.com/Michael1297/Anime4K_js/refs/heads/master/Anime4K_UL.js
 // @license             MIT License
 // @run-at              document-idle
-// @require             https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/ShaderParser.js
-// @require             https://raw.githubusercontent.com/Michael1297/Bilibili_Anime4K/refs/heads/update/ShaderWebEngine.js
+// @require             https://raw.githubusercontent.com/Michael1297/Anime4K_js/refs/heads/master/ShaderParser.js
+// @require             https://raw.githubusercontent.com/Michael1297/Anime4K_js/refs/heads/master/ShaderWebEngine.js
 // ==/UserScript==
 
 const SHADER_URL = "https://raw.githubusercontent.com/bloc97/Anime4K/7684e9586f8dcc738af08a1cdceb024cc184f426/glsl/Upscale/Anime4K_Upscale_CNN_x2_UL.glsl";
